@@ -30,9 +30,23 @@ class ResearchRequest(BaseModel):
     question: str
 
 
+@app.get("/")
+async def root() -> dict:
+    import groq_llm
+    return {
+        "name": "AI Research Agent API",
+        "version": "1.0.0",
+        "status": "running",
+        "llm": "groq" if groq_llm.IS_ACTIVE else "rule-based",
+        "docs": "/docs",
+        "endpoints": ["/health", "/research"],
+    }
+
+
 @app.get("/health")
 async def health() -> dict:
-    return {"status": "ok", "service": "ai-research-agent"}
+    import groq_llm
+    return {"status": "ok", "service": "ai-research-agent", "llm": "groq" if groq_llm.IS_ACTIVE else "rule-based"}
 
 
 @app.post("/research")
