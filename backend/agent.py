@@ -18,6 +18,7 @@ from typing import Generator
 
 
 from tools import web_search, text_summarizer, fact_checker, calculator
+import groq_llm
 
 
 class ResearchAgent:
@@ -212,50 +213,65 @@ class ResearchAgent:
         fact_result: dict | None,
         calc_result: dict | None,
     ) -> str:
-        """Build a structured, natural-sounding final answer."""
-        lines: list[str] = []
+        """Synthesise a final answer — uses Groq when available, structured markdown otherwise."""
+        if groq_llm.IS_ACTIVE:
+            return self._compose_answer_groq(question, search_results, summary, fact_result, calc_result)
+        return self._compose_answer_fallback(question, search_results, summary, fact_result, calc_result)
 
-        lines.append(f"## Research Summary\n")
-        lines.append(
-            f"Based on my multi-step research into **\"{question}\"**, here is what I found:\n"
+    @staticmethod
+    def _compose_answer_groq(
+        question: str,
+        search_results: list[dict],
+        summary: str,
+        fact_result: dict | None,
+        calc_result: dict | None,
+    ) -> str:
+        sources_text = "\n".join(
+            f"- [{r['title']}]: {r['snippet']}" for r in search_results
         )
+        extra = ""
+        if fact_result:
+            extra += f"\nFact-check: {fact_result['verdict']} (confidence {fact_result['confidence']}%) — {fact_result['explanation']}"
+        if calc_result and "result" in calc_result:
+            extra += f"\nCalculation: {calc_result['expression']} = {calc_result['result']}"
 
-        lines.append("### Key Findings from Web Search\n")
+        system = (
+            "You are a research analyst. Write a well-structured, markdown-formatted answer. "
+            "Use headings (##), bullet points, and bold key terms. "
+            "Be informative but concise. Base your answer on the provided sources."
+        )
+        user = (
+            f"Question: {question}\n\n"
+            f"Web search findings:\n{sources_text}\n\n"
+            f"Summarised overview: {summary}"
+            f"{extra}"
+        )
+        try:
+            return groq_llm.reason(system, user, temperature=0.5)
+        except Exception:
+            return ResearchAgent._compose_answer_fallback(question, search_results, summary, fact_result, calc_result)
+
+    @staticmethod
+    def _compose_answer_fallback(
+        question: str,
+        search_results: list[dict],
+        summary: str,
+        fact_result: dict | None,
+        calc_result: dict | None,
+    ) -> str:
+        lines: list[str] = [
+            f"## Research Summary\n",
+            f"Based on my multi-step research into **\"{question}\"**, here is what I found:\n",
+            "### Key Findings from Web Search\n",
+        ]
         for r in search_results:
             lines.append(f"- **[{r['title']}]({r['url']})**: {r['snippet']}\n")
-
         lines.append("\n### Synthesised Overview\n")
         lines.append(summary + "\n")
-
         if fact_result:
-            verdict_emoji = {
-                "Likely True": "✅",
-                "Partially True": "⚠️",
-                "Unverified": "❓",
-            }.get(fact_result["verdict"], "🔍")
-            lines.append("\n### Fact-Check Result\n")
-            lines.append(
-                f"{verdict_emoji} **Verdict**: {fact_result['verdict']} "
-                f"(confidence: {fact_result['confidence']}%)\n"
-            )
-            lines.append(f"> {fact_result['explanation']}\n")
-
-        if calc_result:
-            if "result" in calc_result:
-                lines.append("\n### Calculation\n")
-                lines.append(
-                    f"Expression `{calc_result['expression']}` = **{calc_result['result']}**\n"
-                )
-            elif "error" in calc_result:
-                lines.append(f"\n_Note: Calculation attempted but failed — {calc_result['error']}_\n")
-
-        lines.append("\n### Conclusion\n")
-        lines.append(
-            "The research indicates this is an active and evolving area. "
-            "The sources retrieved represent current thinking, but I recommend "
-            "cross-referencing with primary literature or official documentation "
-            "for decisions requiring high accuracy. "
-            "Feel free to ask follow-up questions to drill deeper into any subtopic."
-        )
-
+            verdict_emoji = {"Likely True": "✅", "Partially True": "⚠️", "Unverified": "❓"}.get(fact_result["verdict"], "🔍")
+            lines.append(f"\n### Fact-Check\n{verdict_emoji} **{fact_result['verdict']}** (confidence: {fact_result['confidence']}%)\n> {fact_result['explanation']}\n")
+        if calc_result and "result" in calc_result:
+            lines.append(f"\n### Calculation\n`{calc_result['expression']}` = **{calc_result['result']}**\n")
+        lines.append("\n### Conclusion\nThe sources retrieved represent current thinking. Cross-reference with primary documentation for high-stakes decisions.")
         return "".join(lines)
