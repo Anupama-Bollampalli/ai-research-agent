@@ -63,3 +63,8 @@ Open http://localhost:5173/ai-research-agent/
 - **More tools**: Add a function to `tools.py` (following the same signature conventions) and register it in the `agent.py` dispatch logic.
 - **Real LLM reasoning**: Replace the rule-based `ResearchAgent` in `agent.py` with calls to the Anthropic or OpenAI API for fully dynamic reasoning chains.
 - **Persistent memory**: Add a vector store (e.g. Chroma) to cache past research results and surface them in future queries.
+
+## Live Demo
+
+- **Frontend**: [GitHub Pages](https://anupama-bollampalli.github.io/ai-research-agent/)
+- **Backend API**: [HF Space](https://abollampalli-ai-research-agent.hf.space)
